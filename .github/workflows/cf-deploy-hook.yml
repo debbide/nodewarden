@@ -1,0 +1,36 @@
+name: Trigger Cloudflare Worker Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: cf-build-main
+  cancel-in-progress: true
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call Cloudflare Deploy Hook
+        env:
+          CF_DEPLOY_HOOK_URL: ${{ secrets.CF_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$CF_DEPLOY_HOOK_URL" ]; then
+            echo "ERROR: CF_DEPLOY_HOOK_URL secret is empty"
+            exit 1
+          fi
+
+          code=$(curl -sS -o resp.json -w "%{http_code}" \
+            --retry 3 --retry-all-errors --retry-delay 2 \
+            -X POST "$CF_DEPLOY_HOOK_URL")
+
+          echo "HTTP: $code"
+          cat resp.json || true
+
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "ERROR: Deploy hook request failed"
+            exit 1
+          fi
